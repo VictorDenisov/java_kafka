@@ -23,21 +23,30 @@ import java.util.Properties;
 
 /**
  * Hello world!
- *
  */
-public class App 
-{
-    public static void main( String[] args )
-    {
+public class App {
+
+    public static final String BROKERS = "brokers";
+    public static final String PROC = "proc";
+    public static final String ABORT = "abort";
+    public static final String MCOUNT = "mcount";
+
+    public static void main(String[] args) {
         Options options = new Options();
 
-        Option proc = new Option("p", "proc", true, "Processor type: consumer, producer");
+        Option proc = new Option("p", PROC, true, "Processor type: consumer, producer");
         proc.setRequired(true);
         options.addOption(proc);
 
-        Option brokers = new Option("b", "brokers", true, "List of brokers");
+        Option brokers = new Option("b", BROKERS, true, "List of brokers");
         brokers.setRequired(true);
         options.addOption(brokers);
+
+        Option abortTransaction = new Option("a", ABORT, false, "Abort transaction. If it's not set then producer will commit transaction");
+        options.addOption(abortTransaction);
+
+        Option messageCount = new Option("m", MCOUNT, true, "Message count");
+        options.addOption(messageCount);
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
@@ -58,9 +67,12 @@ public class App
         System.out.println("Processor: " + processor);
 
         if (processor.equals("consumer")) {
-            consumer(cmd.getOptionValue("brokers"));
+            consumer(cmd.getOptionValue(BROKERS));
         } else {
-            producer(cmd.getOptionValue("brokers"));
+            String mcountValue = cmd.getOptionValue(MCOUNT);
+            System.out.println("Mcount value: " + mcountValue);
+            int mcount = Integer.parseInt(mcountValue == null ? "1" : mcountValue);
+            producer(cmd.getOptionValue(BROKERS), cmd.hasOption(ABORT), mcount);
         }
     }
 
@@ -110,7 +122,7 @@ public class App
         //System.out.println("DONE");
     }
 
-    private static void producer(String brokers) {
+    private static void producer(String brokers, boolean abortTransaction, int messageCount) {
         Properties props = new Properties();
         props.put("bootstrap.servers", brokers);
         props.put("acks", "all");
@@ -124,7 +136,6 @@ public class App
 
         Producer<String, String> producer = new KafkaProducer<>(props);
         producer.initTransactions();
-        int i = 0;
         ArrayList<Header> headers = new ArrayList<Header>();
         headers.add(new Header() {
             public String key() {
@@ -135,12 +146,20 @@ public class App
                 return "hv".getBytes();
             }
         });
-        ProducerRecord<String, String> producerRecord;
-        producerRecord = new ProducerRecord<String, String>("test_topic", "Key", "Hello World 0!");
+        System.out.println("Sending messages: " + messageCount);
         producer.beginTransaction();
-        producer.send(producerRecord);
-        //producer.abortTransaction();
-        producer.commitTransaction();
+        for (int i = 0; i < messageCount; ++i) {
+            ProducerRecord<String, String> producerRecord;
+            producerRecord = new ProducerRecord<String, String>("test_topic", "Key", "Hello World 0!");
+            producer.send(producerRecord);
+        }
+        if (abortTransaction) {
+            System.out.println("Aborting transaction");
+            producer.abortTransaction();
+        } else {
+            System.out.println("Committing transaction");
+            producer.commitTransaction();
+        }
 
         System.out.println("Wrote to kafka topic");
 
