@@ -1,5 +1,12 @@
 package io.denisov;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -22,14 +29,44 @@ public class App
 {
     public static void main( String[] args )
     {
-        consumer();
-        //producer();
+        Options options = new Options();
+
+        Option proc = new Option("p", "proc", true, "Processor type: consumer, producer");
+        proc.setRequired(true);
+        options.addOption(proc);
+
+        Option brokers = new Option("b", "brokers", true, "List of brokers");
+        brokers.setRequired(true);
+        options.addOption(brokers);
+
+        CommandLineParser parser = new DefaultParser();
+        HelpFormatter formatter = new HelpFormatter();
+        CommandLine cmd;
+
+        try {
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("utility-name", options);
+
+            System.exit(1);
+            return;
+        }
+
+        String processor = cmd.getOptionValue("proc");
+
+        System.out.println("Processor: " + processor);
+
+        if (processor.equals("consumer")) {
+            consumer(cmd.getOptionValue("brokers"));
+        } else {
+            producer(cmd.getOptionValue("brokers"));
+        }
     }
 
-    private static void consumer() {
+    private static void consumer(String brokers) {
         final Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                "kafka:9092");
+        props.put("bootstrap.servers", brokers);
         props.put("batch.size", 11);
         props.put(ConsumerConfig.GROUP_ID_CONFIG,
                 "KafkaExampleConsumer5");
@@ -51,9 +88,12 @@ public class App
                     consumer.poll(1000);
             System.out.println("read messages");
 
+/*
             if (consumerRecords.count()==0) {
                 break;
             }
+
+ */
 
             consumerRecords.forEach(record -> {
                 System.out.printf("Consumer Record:(%s, %s, %d, %d)\n",
@@ -66,13 +106,13 @@ public class App
 
             consumer.commitAsync();
         }
-        consumer.close();
-        System.out.println("DONE");
+        //consumer.close();
+        //System.out.println("DONE");
     }
 
-    private static void producer() {
+    private static void producer(String brokers) {
         Properties props = new Properties();
-        props.put("bootstrap.servers", "kafka:9092");
+        props.put("bootstrap.servers", brokers);
         props.put("acks", "all");
         props.put("batch.size", 11);
         props.put("buffer.memory", 33554432);
@@ -80,6 +120,7 @@ public class App
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("transactional.id", "my-transactional-id");
         props.put("isolation.level", "read_committed");
+        System.out.println("Running producer");
 
         Producer<String, String> producer = new KafkaProducer<>(props);
         producer.initTransactions();
@@ -98,7 +139,10 @@ public class App
         producerRecord = new ProducerRecord<String, String>("test_topic", "Key", "Hello World 0!");
         producer.beginTransaction();
         producer.send(producerRecord);
-        producer.abortTransaction();
+        //producer.abortTransaction();
+        producer.commitTransaction();
+
+        System.out.println("Wrote to kafka topic");
 
         producer.close();
     }
